@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Utf8Error {
     NotALeadingByte,
     NotAContinuationByte,
@@ -208,6 +208,7 @@ macro_rules! cont_decode {
             let mut state = NEXT_STATE[class as usize];
             
             for _ in 1..4 {
+                if state >= EL { break; }
                 if $this.next >= $this.end {
                     $this.status = Err(UnexpectedEndOfBuffer);
                     return None;
