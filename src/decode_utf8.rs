@@ -1,6 +1,16 @@
 use std::char::from_u32_unchecked;
+use self::Utf8Error::*;
+
+pub enum Utf8Error {
+    OverlongEncoding,
+    UnexpectedContinuationByte,
+    IncompleteSequence,
+    InvalidCodepoint,
+    UnexpectedEndOfBuffer,
+}
 
 pub struct Utf8Decoder {
+    pub status: Result<(), Utf8Error>,
     next: * const u8,
     end: * const u8
 }
@@ -9,6 +19,7 @@ pub fn decode_utf8(raw: &[u8]) -> Utf8Decoder {
     unsafe {
         let first = &raw[0] as * const u8;
         Utf8Decoder {
+            status: Ok(()),
             next: first,
             end: first.offset(raw.len() as isize),
         }
@@ -63,7 +74,11 @@ impl Iterator for Utf8Decoder {
             let mut state = NEXT_STATE[class as usize];
             
             for _ in 1..4 {
-                if self.next >= self.end { return None; }
+                if self.next >= self.end {
+                    self.status = Err(UnexpectedEndOfBuffer);
+                    return None;
+                }
+                
                 let byte = *self.next;
                 self.next = self.next.offset(1);
                 
