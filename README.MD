@@ -3,8 +3,10 @@
 ## UTF-8 Decoding
 
 The basic decoder is based on the [Flexible and Economical UTF-8 Decoder by Bjoern
-Hoerhmann](https://bjoern.hoehrmann.de/utf-8/decoder/dfa/). A short, cleaned up
-description of the state machine underlying it follows:
+Hoerhmann][1]. A short, cleaned up description of the state machine underlying it
+follows:
+
+[1]: https://bjoern.hoehrmann.de/utf-8/decoder/dfa/
 
 ### Character Classes:
 
@@ -138,6 +140,8 @@ It may also be profitable to encode the number of consumed bytes into the state
 representation somehow so that `self.src` need only be incremented once, getting
 rid of false serial dependencies between the loop iterations.
 
+## Character Classification
+
 Since the primary use case of this decoder will be in lexers, the exact codepoint
 often will not be as important as one or two of its Unicode properties. It may be
 worthwhile to do decoding and categorization of some sort in one go.
@@ -147,3 +151,66 @@ the ASCII range of the character class table with indicators of the final catego
 we care about; by reading from the table before branching on `byte < 0x80`, we can
 leverage the one load in both branches, hopefully reducing the relative cost of
 misprediction.
+
+One of the most important Unicode properties Lexers will care about, is the
+`General_Category`, which can have one of 30 distinct values, which are in turn
+grouped into eight larger categories:
+
+    General_Category Values:
+    - L (Letter)
+      - LC (Cased_Letter)
+        - Lu (Uppercase_Letter)
+        - Ll (Lowercase_Letter)
+        - Lt (Titlecase_Letter)
+      - Lm (Modifier_Letter)
+      - Lo (Other_Letter)
+    - M (Mark)
+      - Mn (Nonspacing_Mark)
+      - Mc (Spacing_Mark)
+      - Me (Enclosing_Mark)
+    - N (Number)
+      - Nd (Decimal_Number)
+      - Nl (Letter_Number)
+      - No (Other_Number)
+    - P (Punctuation)
+      - Pc (Connector_Punctuation)
+      - Pd (Dash_Punctuation)
+      - Ps (Open_Punctuation)
+      - Pe (Close_Punctuation)
+      - Pi (Initial_Punctuation)
+      - Pf (Final_Punctuation)
+      - Po (Other_Punctuation)
+    - S (Symbol)
+      - Sm (Math_Symbol)
+      - Sc (Currency_Symbol)
+      - Sk (Modifier_Symbol)
+      - So (Other_Symbol)
+    - Z (Seperator)
+      - Zs (Space_Seperator)
+      - Zl (Line_Seperator)
+      - Zp (Paragraph_Seperator)
+    - C (Other)
+      - Cc (Control)
+      - Cf (Format)
+      - Cs (Surrogate)
+      - Co (Private_Use)
+      - Cn (Unassigned)
+
+Of course, we could fit 30 distinct values into a 5-bit code, but this complicates
+the (common) case where you want to check whether a character belongs to one of
+several of these categories.
+
+We could instead represent a general category with 6 bits, where the upper three
+bits distinguish between `L`, `M`, `N`, `P`, `S`, `Z`, and `O`, and the lower three
+bits encode the subcategory. This allows, for example, testing for the supercategories
+with a single bitwise `&` and a compare, like `is_number(cat: u8) = (cat & 0x3F)
+== CAT_NUMBER`. We can optimize the most important properties deriving from the
+general categories (like [`ID_Start` and `ID_Continue`][2]) by clever choice of
+bit patterns.
+
+[2]: http://unicode.org/reports/tr31/#Table_Lexical_Classes_for_Identifiers
+
+Alternatively, we could chose a dense 5-bit code which gets expanded into a 32-bit
+value with just a single bit set: `expand(cat: u8) = (1u32 << cat)`. We can then
+test for any combination of categories in a consistent manner: `is_letter_or_number(cat:
+u8) = (expand(cat) & (CAT_NUMBER | CAT_LETTER)) != 0`.
