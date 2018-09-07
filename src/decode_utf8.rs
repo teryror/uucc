@@ -31,6 +31,16 @@ pub fn decode_utf8(raw: &[u8]) -> Utf8Decoder {
 
 pub type GeneralCategory = u32;
 
+pub trait BitSet {
+    fn subset_of(self, superset: Self) -> bool;
+}
+
+impl BitSet for GeneralCategory {
+    fn subset_of(self, superset: GeneralCategory) -> bool {
+        (self & superset) == self
+    }
+}
+
 const LU: u8 = 0x00;
 const LL: u8 = 0x01;
 const LT: u8 = 0x02;

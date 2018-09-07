@@ -55,12 +55,32 @@ mod tests {
         let bytes = [0x0A, 0x20, 0x2D, 0x32, 0x5A, 0x7A];
         let mut iter = decode_utf8(&bytes);
         
-        assert_eq!(iter.next_char_and_category().unwrap().1, CONTROL);
-        assert_eq!(iter.next_char_and_category().unwrap().1, SPACE_SEPERATOR);
-        assert_eq!(iter.next_char_and_category().unwrap().1, DASH_PUNCTUATION);
-        assert_eq!(iter.next_char_and_category().unwrap().1, DECIMAL_NUMBER);
-        assert_eq!(iter.next_char_and_category().unwrap().1, UPPERCASE_LETTER);
-        assert_eq!(iter.next_char_and_category().unwrap().1, LOWERCASE_LETTER);
+        let cat = iter.next_char_and_category().unwrap().1;
+        assert!(cat.subset_of(OTHER));
+        assert_eq!(cat, CONTROL);
+        
+        let cat = iter.next_char_and_category().unwrap().1;
+        assert!(cat.subset_of(SEPERATOR));
+        assert_eq!(cat, SPACE_SEPERATOR);
+        
+        let cat = iter.next_char_and_category().unwrap().1;
+        assert!(cat.subset_of(PUNCTUATION));
+        assert_eq!(cat, DASH_PUNCTUATION);
+        
+        let cat = iter.next_char_and_category().unwrap().1;
+        assert!(cat.subset_of(NUMBER));
+        assert_eq!(cat, DECIMAL_NUMBER);
+        
+        let cat = iter.next_char_and_category().unwrap().1;
+        assert!(cat.subset_of(CASED_LETTER));
+        assert!(cat.subset_of(LETTER));
+        assert_eq!(cat, UPPERCASE_LETTER);
+        
+        let cat = iter.next_char_and_category().unwrap().1;
+        assert!(cat.subset_of(CASED_LETTER));
+        assert!(cat.subset_of(LETTER));
+        assert_eq!(cat, LOWERCASE_LETTER);
+        
         assert!(iter.next_char_and_category().is_none());
     }
 }
