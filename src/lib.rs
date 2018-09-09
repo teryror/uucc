@@ -1,4 +1,5 @@
 pub mod decode_utf8;
+mod tables;
 
 #[cfg(test)]
 mod tests {

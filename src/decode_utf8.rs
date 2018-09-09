@@ -166,18 +166,6 @@ const CHAR_CLASSES: [u8; 256] = [
     L4O, L4N, L4N, L4N, L4R, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR,
 ];
 
-// US-ASCII only for now; will need a different data structure for higher codepoints
-const GENERAL_CATEGORY: [u8; 128] = [
-    CC, CC, CC, CC, CC, CC, CC, CC, CC, CC, CC, CC, CC, CC, CC, CC, 
-    CC, CC, CC, CC, CC, CC, CC, CC, CC, CC, CC, CC, CC, CC, CC, CC, 
-    ZS, PO, PO, PO, SC, PO, PO, PO, PS, PE, PO, SM, PO, PD, PO, PO,
-    ND, ND, ND, ND, ND, ND, ND, ND, ND, ND, PO, PO, SM, SM, SM, PO,
-    PO, LU, LU, LU, LU, LU, LU, LU, LU, LU, LU, LU, LU, LU, LU, LU,
-    LU, LU, LU, LU, LU, LU, LU, LU, LU, LU, LU, PS, PO, PE, SK, PC,
-    SK, LL, LL, LL, LL, LL, LL, LL, LL, LL, LL, LL, LL, LL, LL, LL,
-    LL, LL, LL, LL, LL, LL, LL, LL, LL, LL, LL, PS, SM, PE, SM, CC,
-];
-
 // 
 // State Transitions
 // 
@@ -217,6 +205,7 @@ use self::Utf8Error::*;
 use std::char::from_u32_unchecked;
 use std::slice::from_raw_parts;
 use std::str::from_utf8_unchecked;
+use tables::*;
 
 macro_rules! d_lead {
     ($lead:expr) => {
@@ -277,6 +266,8 @@ macro_rules! set_err {
     }
 }
 
+macro_rules! i { ($a:ident[$n:expr, $b:expr]) => ($a[(($n as usize) << 6) + ($b as usize)]) }
+
 impl Utf8Decoder {
     pub fn status(&self) -> Result<(), Utf8Error> {
         self.status
@@ -286,8 +277,7 @@ impl Utf8Decoder {
         if self.next >= self.end { return None; }
         
         unsafe {
-            let byte = *self.next;
-            self.next = self.next.offset(1);
+            let byte = next_b!(self);
             if byte < 0x80 { return Some(byte as char); }
             
             let (mut codepoint, mut state) = d_lead!(byte);
@@ -307,21 +297,27 @@ impl Utf8Decoder {
         if self.next >= self.end { return None; }
         
         unsafe {
-            let byte = *self.next;
-            self.next = self.next.offset(1);
+            let byte = next_b!(self);
             
             if byte < 0x80 {
-                let cat = GENERAL_CATEGORY[byte as usize];
+                let cat = CAT_VALUES[byte as usize];
                 return Some((byte as char, (1 << cat) as GeneralCategory));
             }
             
             let (mut codepoint, mut state) = d_lead!(byte);
+            let  mut cat_idx = CAT_INDEX[byte as usize];
+            
             for _ in 1..4 {
                 if chk_err!(self, &mut state) { break; }
                 let byte = next_b!(self);
                 d_cont!(byte, &mut codepoint, &mut state);
                 
-                if state == OK { unimplemented!(); }
+                if state == OK {
+                    let cat = (1 << i!(CAT_VALUES[cat_idx, byte])) as GeneralCategory;
+                    return Some((from_u32_unchecked(codepoint), cat));
+                }
+                
+                cat_idx = i!(CAT_INDEX[cat_idx, byte]);
             }
             
             return set_err!(self, state);
