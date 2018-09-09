@@ -15,7 +15,7 @@ mod tests {
                 let mut iter = decode_utf8(&bytes);
                 
                 assert!(iter.next_char().is_none());
-                assert_eq!(iter.status.unwrap_err(), $expected_err);
+                assert_eq!(iter.status().unwrap_err(), $expected_err);
             }
         )*
         }
@@ -42,7 +42,6 @@ mod tests {
             if let Some(got) = iter.next_char() {
                 assert_eq!(got, expected);
             } else {
-                println!("{:?}", iter.status);
                 unreachable!();
             }
         }

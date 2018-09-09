@@ -10,7 +10,7 @@ pub enum Utf8Error {
 
 #[derive(Clone)]
 pub struct Utf8Decoder {
-    pub status: Result<(), Utf8Error>,
+    status: Result<(), Utf8Error>,
     first: * const u8,
     next: * const u8,
     end: * const u8
@@ -255,6 +255,10 @@ macro_rules! cont_decode {
 }
 
 impl Utf8Decoder {
+    pub fn status(&self) -> Result<(), Utf8Error> {
+        self.status
+    }
+    
     pub fn next_char(&mut self) -> Option<char> {
         if self.next >= self.end { return None; }
         
