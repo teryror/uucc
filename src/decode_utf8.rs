@@ -1,4 +1,4 @@
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Utf8Error {
     NotALeadingByte,
     NotAContinuationByte,
@@ -8,8 +8,10 @@ pub enum Utf8Error {
     UnexpectedEndOfBuffer,
 }
 
+#[derive(Clone)]
 pub struct Utf8Decoder {
     pub status: Result<(), Utf8Error>,
+    first: * const u8,
     next: * const u8,
     end: * const u8
 }
@@ -18,12 +20,16 @@ pub fn decode_utf8(raw: &[u8]) -> Utf8Decoder {
     unsafe {
         let first = &raw[0] as * const u8;
         Utf8Decoder {
+            first: first,
             status: Ok(()),
             next: first,
             end: first.offset(raw.len() as isize),
         }
     }
 }
+
+#[derive(Clone, Copy)]
+pub struct Utf8DecoderPosition{raw: * const u8}
 
 // 
 // Unicode Property General_Category
@@ -209,6 +215,8 @@ const NEXT_STATE: [u8; 156] = [
 
 use self::Utf8Error::*;
 use std::char::from_u32_unchecked;
+use std::slice::from_raw_parts;
+use std::str::from_utf8_unchecked;
 
 macro_rules! cont_decode {
     ( $this:expr, $lead:expr, $ret:expr ) => {
@@ -219,10 +227,7 @@ macro_rules! cont_decode {
             
             for _ in 1..4 {
                 if state >= EL { break; }
-                if $this.next >= $this.end {
-                    $this.status = Err(UnexpectedEndOfBuffer);
-                    return None;
-                }
+                if $this.next >= $this.end { state = 0; break; }
                 
                 let byte = * $this.next;
                 $this.next = $this.next.offset(1);
@@ -234,12 +239,14 @@ macro_rules! cont_decode {
                 if state == OK { return Some(($ret)(codepoint)); }
             }
             
+            $this.first = $this.next;
             $this.status = Err(match state {
                               EL => NotALeadingByte,
                               EC => NotAContinuationByte,
                               EO => OverlongEncoding,
                               ES => SurrogateCharacter,
                               ER => OutOfCharacterRange,
+                              0 => UnexpectedEndOfBuffer,
                               _ => unreachable!()
                               });
             return None;
@@ -274,5 +281,27 @@ impl Utf8Decoder {
             
             cont_decode!(self, byte, |_| { unreachable!(); });
         }
+    }
+    
+    pub fn mark(&self) -> Utf8DecoderPosition {
+        Utf8DecoderPosition{raw: self.next}
+    }
+    
+    pub fn try_get_marked_string(&self, mark: Utf8DecoderPosition)
+      -> Result<&str, Utf8Error>
+    {
+        match self.status {
+            Ok(_) => {
+                assert!(self.first <= mark.raw && mark.raw <= self.next);
+            },
+            Err(e) => if mark.raw < self.first {
+                return Err(e);
+            } else {
+                assert!(mark.raw <= self.next);
+            }
+        }
+        
+        let size = (self.next as usize) - (mark.raw as usize);
+        unsafe { Ok(from_utf8_unchecked(from_raw_parts(mark.raw, size))) }
     }
 }

@@ -83,4 +83,34 @@ mod tests {
         
         assert!(iter.next_char_and_category().is_none());
     }
+    
+    #[test]
+    fn marked_strings_respect_boundaries() {
+        let mut iter = decode_utf8(&[0x20, 0x20, 0x80, 0x20, 0x20]);
+        
+        let start = iter.mark();
+        assert_eq!(iter.try_get_marked_string(start).unwrap(), "");
+        
+        iter.next_char(); iter.next_char();
+        assert_eq!(iter.try_get_marked_string(start).unwrap(), "  ");
+                
+        let before_error = iter.mark();
+        assert_eq!(iter.try_get_marked_string(before_error).unwrap(), "");
+        
+        assert!(iter.next_char().is_none());
+        let after_error = iter.mark();
+        assert_eq!(iter.try_get_marked_string(after_error).unwrap(), "");
+        
+        assert!(iter.try_get_marked_string(start).is_err());
+        assert!(iter.try_get_marked_string(before_error).is_err());
+        
+        iter.next_char(); iter.next_char();
+        let end = iter.mark();
+        assert_eq!(iter.try_get_marked_string(end).unwrap(), "");
+        assert_eq!(iter.try_get_marked_string(after_error).unwrap(), "  ");
+        
+        assert!(iter.try_get_marked_string(start).is_err());
+        assert!(iter.try_get_marked_string(before_error).is_err());
+        
+    }
 }
