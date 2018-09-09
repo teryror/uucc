@@ -218,38 +218,61 @@ use std::char::from_u32_unchecked;
 use std::slice::from_raw_parts;
 use std::str::from_utf8_unchecked;
 
-macro_rules! cont_decode {
-    ( $this:expr, $lead:expr, $ret:expr ) => {
+macro_rules! d_lead {
+    ($lead:expr) => {
         {
             let class = CHAR_CLASSES[$lead as usize];
             let mut codepoint = (0xFFu32 >> class) & ($lead as u32);
             let mut state = NEXT_STATE[class as usize];
-            
-            for _ in 1..4 {
-                if state >= EL { break; }
-                if $this.next >= $this.end { state = 0; break; }
-                
-                let byte = * $this.next;
-                $this.next = $this.next.offset(1);
-                
-                let class = CHAR_CLASSES[byte as usize];
-                codepoint = (byte as u32 & 0x3F) | (codepoint << 6);
-                state = NEXT_STATE[(state + class) as usize];
-                
-                if state == OK { return Some(($ret)(codepoint)); }
-            }
-            
+            (codepoint, state)
+        }
+    }
+}
+
+macro_rules! chk_err {
+    ($this:expr, $state:expr) => {
+        {
+            if * $state >= EL { true }
+            else if $this.next >= $this.end { * $state = 0; true }
+            else { false }
+        }
+    }
+}
+
+macro_rules! next_b {
+    ($this:expr) => {
+        {
+            let byte = * $this.next;
+            $this.next = $this.next.offset(1);
+            byte
+        }
+    }
+}
+
+macro_rules! d_cont {
+    ($b:expr, $cp:expr, $state:expr) => {
+        {
+            let class = CHAR_CLASSES[$b as usize];
+            * $cp = ($b as u32 & 0x3F) | (* $cp << 6);
+            * $state = NEXT_STATE[(* $state + class) as usize];
+        }
+    }
+}
+
+macro_rules! set_err {
+    ($this:expr, $state:expr) => {
+        {
             $this.first = $this.next;
-            $this.status = Err(match state {
-                              EL => NotALeadingByte,
-                              EC => NotAContinuationByte,
-                              EO => OverlongEncoding,
-                              ES => SurrogateCharacter,
-                              ER => OutOfCharacterRange,
-                              0 => UnexpectedEndOfBuffer,
-                              _ => unreachable!()
-                              });
-            return None;
+            $this.status = Err(match $state {
+                               EL => NotALeadingByte,
+                               EC => NotAContinuationByte,
+                               EO => OverlongEncoding,
+                               ES => SurrogateCharacter,
+                               ER => OutOfCharacterRange,
+                               0 => UnexpectedEndOfBuffer,
+                               _ => unreachable!()
+                               });
+            None
         }
     }
 }
@@ -267,7 +290,16 @@ impl Utf8Decoder {
             self.next = self.next.offset(1);
             if byte < 0x80 { return Some(byte as char); }
             
-            cont_decode!(self, byte, from_u32_unchecked);
+            let (mut codepoint, mut state) = d_lead!(byte);
+            for _ in 1..4 {
+                if chk_err!(self, &mut state) { break; }
+                let byte = next_b!(self);
+                d_cont!(byte, &mut codepoint, &mut state);
+                
+                if state == OK { return Some(from_u32_unchecked(codepoint)); }
+            }
+            
+            return set_err!(self, state);
         }
     }
     
@@ -283,7 +315,16 @@ impl Utf8Decoder {
                 return Some((byte as char, (1 << cat) as GeneralCategory));
             }
             
-            cont_decode!(self, byte, |_| { unreachable!(); });
+            let (mut codepoint, mut state) = d_lead!(byte);
+            for _ in 1..4 {
+                if chk_err!(self, &mut state) { break; }
+                let byte = next_b!(self);
+                d_cont!(byte, &mut codepoint, &mut state);
+                
+                if state == OK { unimplemented!(); }
+            }
+            
+            return set_err!(self, state);
         }
     }
     
