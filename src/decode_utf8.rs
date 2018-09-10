@@ -32,6 +32,37 @@ pub fn decode_utf8(raw: &[u8]) -> Utf8Decoder {
 pub struct Utf8DecoderPosition{raw: * const u8}
 
 // 
+// Unicode Script Property
+// 
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[repr(u8)]
+pub enum Script {
+    Unknown, Adlam, Ahom, AnatolianHieroglyphs, Arabic, Armenian, Avestan,
+    Balinese, Bamum, BassaVah, Batak, Bengali, Bhaiksuki, Bopomofo,
+    Brahmi, Braille, Buginese, Buhid, CanadianAboriginal, Carian, CaucasianAlbanian,
+    Chakma, Cham, Cherokee, Common, Coptic, Cuneiform, Cypriot, Cyrillic,
+    Deseret, Devanagari, Dogra, Duployan, EgyptianHieroglyphs, Elbasan,
+    Ethiopic, Georgian, Glagolitic, Gothic, Grantha, Greek, Gujarati,
+    GunjalaGondi, Gurmukhi, Han, Hangul, HanifiRohingya, Hanunoo, Hatran,
+    Hebrew, Hiragana, ImperialAramaic, Inherited, InscriptionalPahlavi,
+    InscriptionalParthian, Javanese, Kaithi, Kannada, Katakana, KayahLi,
+    Kharoshthi, Khmer, Khojki, Khudawadi, Lao, Latin, Lepcha, Limbu,
+    LinearA, LinearB, Lisu, Lycian, Lydian, Mahajani, Makasar, Malayalam,
+    Mandaic, Manichaean, Marchen, MasaramGondi, Medefaidrin, MeeteiMayek,
+    MendeKikakui, MeroiticCursive, MeroiticHieroglyphs, Miao, Modi,
+    Mongolian, Mro, Multani, Myanmar, Nabataean, NewTaiLue, Newa,
+    Nko, Nushu, Ogham, OlChiki, OldHungarian, OldItalic, OldNorthArabian,
+    OldPermic, OldPersian, OldSogdian, OldSouthArabian, OldTurkic,
+    Oriya, Osage, Osmanya, PahawhHmong, Palmyrene, PauCinHau, PhagsPa,
+    Phoenician, PsalterPahlavi, Rejang, Runic, Samaritan, Saurashtra,
+    Sharada, Shavian, Siddham, SignWriting, Sinhala, Sogdian, SoraSompeng,
+    Soyombo, Sundanese, SylotiNagri, Syriac, Tagalog, Tagbanwa, TaiLe,
+    TaiTham, TaiViet, Takri, Tamil, Tangut, Telugu, Thaana, Thai,
+    Tibetan, Tifinagh, Tirhuta, Ugaritic, Vai, WarangCiti, Yi, ZanabazarSquare,
+}
+
+// 
 // Unicode Property General_Category
 // 
 
@@ -203,6 +234,7 @@ const NEXT_STATE: [u8; 156] = [
 
 use self::Utf8Error::*;
 use std::char::from_u32_unchecked;
+use std::mem::transmute;
 use std::slice::from_raw_parts;
 use std::str::from_utf8_unchecked;
 use tables::*;
@@ -318,6 +350,37 @@ impl Utf8Decoder {
                 }
                 
                 cat_idx = i!(CAT_INDEX[cat_idx, byte]);
+            }
+            
+            return set_err!(self, state);
+        }
+    }
+    
+    pub fn next_char_and_script(&mut self) -> Option<(char, Script)> {
+        if self.next >= self.end { return None; }
+        
+        unsafe {
+            let byte = next_b!(self);
+            
+            if byte < 0x80 {
+                let scr = transmute(SCRIPT_VALUES[byte as usize]);
+                return Some((byte as char, scr));
+            }
+            
+            let (mut codepoint, mut state) = d_lead!(byte);
+            let  mut scr_idx = SCRIPT_INDEX[byte as usize];
+            
+            for _ in 1..4 {
+                if chk_err!(self, &mut state) { break; }
+                let byte = next_b!(self);
+                d_cont!(byte, &mut codepoint, &mut state);
+                
+                if state == OK {
+                    let scr = transmute(i!(SCRIPT_VALUES[scr_idx, byte]));
+                    return Some((from_u32_unchecked(codepoint), scr));
+                }
+                
+                scr_idx = i!(SCRIPT_INDEX[scr_idx, byte]);
             }
             
             return set_err!(self, state);
